@@ -100,23 +100,11 @@
 /****************************************************************************************
                                     INCLUDE FILES
 ****************************************************************************************/
-#include <stdio.h>
-#include <sys/types.h>
-#include <ctype.h>
 #include <unistd.h>
-#include <semaphore.h>
-#include <time.h>
 #include <signal.h>
-
-#include <errno.h> 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <string.h>     
-#include <sys/select.h>
-#include <sys/time.h>
-#include <fcntl.h>
+#include <string.h>
 #include <errno.h>
-#include <limits.h>
+#include "osconfig.h"
 
 /*
 ** The __USE_UNIX98 is for advanced pthread features on linux
@@ -131,24 +119,14 @@
 #include "osapi.h"
 
 /*
-** This include must be put below the osapi.h
-** include so it can pick up the define
-*/
-#ifndef OSAL_SOCKET_QUEUE
-#include <mqueue.h>
-#endif
-
-/*
 ** Defines
 */
-#define OS_BASE_PORT 43000
 #define UNINITIALIZED 0
 #define MAX_PRIORITY 255
 #ifndef PTHREAD_STACK_MIN
    #define PTHREAD_STACK_MIN 8092
 #endif
 
-#undef OS_DEBUG_PRINTF 
 
 /*
 ** Global data for the API
@@ -170,27 +148,26 @@ typedef struct
     void     *delete_hook_pointer;
 }OS_task_record_t;
     
-#ifdef OSAL_SOCKET_QUEUE
 /* queues */
 typedef struct
 {
-    int    free;
-    int    id;
-    uint32 max_size;
-    char   name [OS_MAX_API_NAME];
-    int    creator;
-}OS_queue_record_t;
-#else
-/* queues */
+	uint32	size;
+	char buffer[OS_MAX_QUEUE_WIDTH];
+}OS_queue_data_t;
+
 typedef struct
 {
-    int    free;
-    mqd_t  id;
-    uint32 max_size;
-    char   name [OS_MAX_API_NAME];
-    int    creator;
+    int    			free;
+    OS_queue_data_t	qData[OS_MAX_QUEUE_DEPTH];
+    uint32 			max_size;
+    char   			name [OS_MAX_API_NAME];
+    int    			creator;
+    pthread_cond_t  cv;
+    int32	  		head;
+    int32   		tail;
+    uint32   		width;
+    uint32   		depth;
 }OS_queue_record_t;
-#endif
 
 /* Binary Semaphores */
 typedef struct
@@ -287,7 +264,6 @@ int32 OS_API_Init(void)
     for(i = 0; i < OS_MAX_QUEUES; i++)
     {
         OS_queue_table[i].free        = TRUE;
-        OS_queue_table[i].id          = UNINITIALIZED;
         OS_queue_table[i].creator     = UNINITIALIZED;
         strcpy(OS_queue_table[i].name,""); 
     }
@@ -644,7 +620,7 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
     */
     return_code = pthread_create(&(OS_task_table[possible_taskid].id),
                                  &custom_attr,
-                                 function_pointer,
+                                 (void* (*)(void*))function_pointer,
                                  (void *)0);
     if (return_code != 0)
     {
@@ -1104,654 +1080,178 @@ int32 OS_TaskInstallDeleteHandler(void *function_pointer)
     
 }/*end OS_TaskInstallDeleteHandler */
 
-/****************************************************************************************
-                                MESSAGE QUEUE API
-****************************************************************************************/
-#ifdef OSAL_SOCKET_QUEUE
-/*---------------------------------------------------------------------------------------
-   Name: OS_QueueCreate
 
-   Purpose: Create a message queue which can be refered to by name or ID
-
-   Returns: OS_INVALID_POINTER if a pointer passed in is NULL
-            OS_ERR_NAME_TOO_LONG if the name passed in is too long
-            OS_ERR_NO_FREE_IDS if there are already the max queues created
-            OS_ERR_NAME_TAKEN if the name is already being used on another queue
-            OS_ERROR if the OS create call fails
-            OS_SUCCESS if success
-
-   Notes: the flags parameter is unused.
----------------------------------------------------------------------------------------*/
-int32 OS_QueueCreate (uint32 *queue_id, const char *queue_name, uint32 queue_depth,
-                       uint32 data_size, uint32 flags)
-{
-    int                  tmpSkt;
-    int                  returnStat;
-    struct sockaddr_in   servaddr;
-    int                  i;
-    uint32               possible_qid;
-    sigset_t             previous;
-    sigset_t             mask;
-
-    if ( queue_id == NULL || queue_name == NULL)
-    {
-        return OS_INVALID_POINTER;
-    }
-
-    /* we don't want to allow names too long*/
-    /* if truncated, two names might be the same */
-
-    if (strlen(queue_name) >= OS_MAX_API_NAME)
-    {
-       return OS_ERR_NAME_TOO_LONG;
-    }
-
-    /* Check Parameters */
-    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous); 
-    
-    for(possible_qid = 0; possible_qid < OS_MAX_QUEUES; possible_qid++)
-    {
-        if (OS_queue_table[possible_qid].free == TRUE)
-            break;
-    }
-        
-    if( possible_qid >= OS_MAX_QUEUES || OS_queue_table[possible_qid].free != TRUE)
-    {
-        OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
-        return OS_ERR_NO_FREE_IDS;
-    }
-
-    /* Check to see if the name is already taken */
-    for (i = 0; i < OS_MAX_QUEUES; i++)
-    {
-        if ((OS_queue_table[i].free == FALSE) &&
-                strcmp ((char*) queue_name, OS_queue_table[i].name) == 0)
-        {
-            OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
-            return OS_ERR_NAME_TAKEN;
-        }
-    } 
-
-    /* Set the possible task Id to not free so that
-     * no other task can try to use it */
-
-    OS_queue_table[possible_qid].free = FALSE;
-    
-    OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
-    
-    tmpSkt = socket(AF_INET, SOCK_DGRAM, 0);
-    if ( tmpSkt == -1 )
-    {
-        OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous); 
-        OS_queue_table[possible_qid].free = TRUE;
-        OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
-
-        #ifdef OS_DEBUG_PRINTF
-           printf("Failed to create a socket on OS_QueueCreate. errno = %d\n",errno);
-        #endif
-        return OS_ERROR;
-    }
-
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family      = AF_INET;
-    servaddr.sin_port        = htons(OS_BASE_PORT + possible_qid);
-    servaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); 
-
-   /* 
-   ** bind the input socket to a pipe
-   ** port numbers are OS_BASE_PORT + queue_id
-   */
-   returnStat = bind(tmpSkt,(struct sockaddr *)&servaddr, sizeof(servaddr));
-   
-   if ( returnStat == -1 )
-   {
-        OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous); 
-        OS_queue_table[possible_qid].free = TRUE;
-        OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
-
-        #ifdef OS_DEBUG_PRINTF
-           printf("bind failed on OS_QueueCreate. errno = %d\n",errno);
-        #endif
-        return OS_ERROR;
-   }
-   
-   /*
-   ** store socket handle
-   */
-   *queue_id = possible_qid;
-   
-    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous); 
-
-    OS_queue_table[*queue_id].id = tmpSkt;
-    OS_queue_table[*queue_id].free = FALSE;
-    OS_queue_table[*queue_id].max_size = data_size;
-    strcpy( OS_queue_table[*queue_id].name, (char*) queue_name);
-    OS_queue_table[*queue_id].creator = OS_FindCreator();
-
-    OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
-
-   return OS_SUCCESS;
-    
-}/* end OS_QueueCreate */
-
-
-/*--------------------------------------------------------------------------------------
-    Name: OS_QueueDelete
-
-    Purpose: Deletes the specified message queue.
-
-    Returns: OS_ERR_INVALID_ID if the id passed in does not exist
-             OS_ERROR if the OS call to delete the queue fails 
-             OS_SUCCESS if success
-
-    Notes: If There are messages on the queue, they will be lost and any subsequent
-           calls to QueueGet or QueuePut to this queue will result in errors
----------------------------------------------------------------------------------------*/
-int32 OS_QueueDelete (uint32 queue_id)
-{
-    sigset_t             previous;
-    sigset_t             mask;
-
-    /* Check to see if the queue_id given is valid */
-    
-    if (queue_id >= OS_MAX_QUEUES || OS_queue_table[queue_id].free == TRUE)
-    {
-        return OS_ERR_INVALID_ID;
-    }
-
-    /* Try to delete the queue */
-
-    if(close(OS_queue_table[queue_id].id) !=0)   
-    {
-        return OS_ERROR;
-    }
-        
-    /* 
-     * Now that the queue is deleted, remove its "presence"
-     * in OS_message_q_table and OS_message_q_name_table 
-    */
-        
-    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous); 
-
-    OS_queue_table[queue_id].free = TRUE;
-    strcpy(OS_queue_table[queue_id].name, "");
-    OS_queue_table[queue_id].creator = UNINITIALIZED;
-    OS_queue_table[queue_id].max_size = 0;
-    OS_queue_table[queue_id].id = UNINITIALIZED;
-
-    OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
- 
-   return OS_SUCCESS;
-
-} /* end OS_QueueDelete */
-
-/*---------------------------------------------------------------------------------------
-   Name: OS_QueueGet
-
-   Purpose: Receive a message on a message queue.  Will pend or timeout on the receive.
-   Returns: OS_ERR_INVALID_ID if the given ID does not exist
-            OS_INVALID_POINTER if a pointer passed in is NULL
-            OS_QUEUE_EMPTY if the Queue has no messages on it to be recieved
-            OS_QUEUE_TIMEOUT if the timeout was OS_PEND and the time expired
-            OS_QUEUE_INVALID_SIZE if the size of the buffer passed in is not big enough for the 
-                                  maximum size message 
-            OS_ERROR if there was an error waiting for the timeout
-            OS_SUCCESS if success
----------------------------------------------------------------------------------------*/
-int32 OS_QueueGet (uint32 queue_id, void *data, uint32 size, uint32 *size_copied, int32 timeout)
-{
-   int       sizeCopied;
-   int       flags;
-
-   /*
-   ** Check Parameters 
-   */
-   if(queue_id >= OS_MAX_QUEUES || OS_queue_table[queue_id].free == TRUE)
-   {
-      return OS_ERR_INVALID_ID;
-   }
-   else if( (data == NULL) || (size_copied == NULL) )
-   {
-      return OS_INVALID_POINTER;
-   }
-   else if( size < OS_queue_table[queue_id].max_size )
-   {
-      /* 
-      ** The buffer that the user is passing in is potentially too small
-      ** RTEMS will just copy into a buffer that is too small
-      */
-      *size_copied = 0;
-      return(OS_QUEUE_INVALID_SIZE);
-   }
-    
-   /*
-   ** Read the socket for data
-   */
-   if (timeout == OS_PEND) 
-   {      
-      fcntl(OS_queue_table[queue_id].id,F_SETFL,0);
-      /*
-      ** A signal can interrupt the recvfrom call, so the call has to be done with 
-      ** a loop
-      */
-      do 
-      {
-         sizeCopied = recvfrom(OS_queue_table[queue_id].id, data, size, 0, NULL, NULL);
-      } while ( sizeCopied == -1 && errno == EINTR );
-
-      if ( sizeCopied == -1 )
-      {
-         *size_copied = 0;
-         return OS_ERROR;
-      }
-      else
-      {
-         *size_copied = sizeCopied;
-      }
-   }
-   else if (timeout == OS_CHECK)
-   {      
-      flags = fcntl(OS_queue_table[queue_id].id, F_GETFL, 0);
-      fcntl(OS_queue_table[queue_id].id,F_SETFL,flags|O_NONBLOCK);
-      
-      sizeCopied = recvfrom(OS_queue_table[queue_id].id, data, size, 0, NULL, NULL);
-
-      fcntl(OS_queue_table[queue_id].id,F_SETFL,flags);
-      
-      if (sizeCopied == -1 && errno == EWOULDBLOCK )
-      {
-         *size_copied = 0;
-         return(OS_QUEUE_EMPTY);
-      }
-      else if ( sizeCopied == -1 )
-      {
-         *size_copied = 0;
-         return(OS_ERROR);
-      }
-      else
-      {
-         *size_copied = sizeCopied;
-      }
-   }
-   else /* timeout */ 
-   {
-      int    rv;
-      int    sock = OS_queue_table[queue_id].id;
-      struct timeval tv_timeout;
-      fd_set fdset;
-
-      FD_ZERO( &fdset );
-      FD_SET( sock, &fdset );
-
-      /*
-      ** Translate the timeout value from milliseconds into 
-      ** seconds and nanoseconds.
-      */
-      tv_timeout.tv_usec = (timeout % 1000) * 1000;
-      tv_timeout.tv_sec = timeout / 1000;
-      
-      /*
-      ** Use select to wait for data to come in on the socket
-      ** TODO: If the select call is interrupted, the timeout should be 
-      ** re-computed to avoid having to delay for the full time.
-      **       
-      */
-      do 
-      {
-         FD_ZERO( &fdset );
-         FD_SET( sock, &fdset );
-         rv = select( sock+1, &fdset, NULL, NULL, &tv_timeout );
-      } while ( rv == -1 && errno == EINTR );
-      
-      if( rv > 0 )
-      {
-         /* got a packet within the timeout */
-         sizeCopied = recvfrom(OS_queue_table[queue_id].id, data, size, 0, NULL, NULL);
-
-         if ( sizeCopied == -1 )
-         {
-            *size_copied = 0;
-            return(OS_ERROR);
-         }
-         else
-         {
-            *size_copied = sizeCopied;
-         }
-      }
-      else if ( rv < 0 )
-      {
-         /* 
-         ** Need to handle Select error codes here 
-         ** This might need a new error code: OS_QUEUE_TIMEOUT_ERROR
-         */
-         #ifdef OS_DEBUG_PRINTF
-            printf("Bad return value from select: %d, sock = %d\n", rv, sock);
-         #endif
-         *size_copied = 0;
-         return OS_ERROR;
-      }
-      
-      /*
-      ** If rv == 0, then the select timed out with no data
-      */
-      *size_copied = 0;
-      return(OS_QUEUE_TIMEOUT);
-     
-   } /* END timeout */
-
-   return OS_SUCCESS;
-
-} /* end OS_QueueGet */
-
-/*---------------------------------------------------------------------------------------
-   Name: OS_QueuePut
-
-   Purpose: Put a message on a message queue.
-
-   Returns: OS_ERR_INVALID_ID if the queue id passed in is not a valid queue
-            OS_INVALID_POINTER if the data pointer is NULL
-            OS_QUEUE_FULL if the queue cannot accept another message
-            OS_ERROR if the OS call returns an error
-            OS_SUCCESS if SUCCESS            
-   
-   Notes: The flags parameter is not used.  The message put is always configured to
-            immediately return an error if the receiving message queue is full.
----------------------------------------------------------------------------------------*/
-int32 OS_QueuePut (uint32 queue_id, void *data, uint32 size, uint32 flags)
-{
-
-   struct sockaddr_in serva;
-   static int         socketFlags = 0;
-   int                bytesSent    = 0;
-   int                tempSkt      = 0;
-
-   /*
-   ** Check Parameters 
-   */
-   if(queue_id >= OS_MAX_QUEUES || OS_queue_table[queue_id].free == TRUE)
-   {
-       return OS_ERR_INVALID_ID;
-   }
-   if (data == NULL)
-   {
-       return OS_INVALID_POINTER;
-   }
-
-   /* 
-   ** specify the IP addres and port number of destination
-   */
-   memset(&serva, 0, sizeof(serva));
-   serva.sin_family      = AF_INET;
-   serva.sin_port        = htons(OS_BASE_PORT + queue_id);
-   serva.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-   /*
-   ** open a temporary socket to transfer the packet to MR
-   */
-   tempSkt = socket(AF_INET, SOCK_DGRAM, 0);
-
-   /* 
-   ** send the packet to the message router task (MR)
-   */
-   bytesSent = sendto(tempSkt,(char *)data, size, socketFlags,
-                    (struct sockaddr *)&serva, sizeof(serva));
-
-   if( bytesSent == -1 ) 
-   {
-      close(tempSkt);
-      return(OS_ERROR);
-   }
-
-   if( bytesSent != size )
-   {
-      close(tempSkt);
-      return(OS_QUEUE_FULL);
-   }
-
-   /* 
-   ** close socket
-   */
-   close(tempSkt);
-
-   return OS_SUCCESS;
-} /* end OS_QueuePut */
-
-#else
 
 /* ---------------------- POSIX MESSAGE QUEUE IMPLEMENTATION ------------------------- */
 /*---------------------------------------------------------------------------------------
- Name: OS_QueueCreate
- 
+   Name: OS_QueueCreate
+
  Purpose: Create a message queue which can be refered to by name or ID
- 
+
  Returns: OS_INVALID_POINTER if a pointer passed in is NULL
  OS_ERR_NAME_TOO_LONG if the name passed in is too long
  OS_ERR_NO_FREE_IDS if there are already the max queues created
  OS_ERR_NAME_TAKEN if the name is already being used on another queue
  OS_ERROR if the OS create call fails
  OS_SUCCESS if success
- 
+
  Notes: the flags parameter is unused.
  ---------------------------------------------------------------------------------------*/
 int32 OS_QueueCreate (uint32 *queue_id, const char *queue_name, uint32 queue_depth,
                       uint32 data_size, uint32 flags)
 {
+	int						ret;
     int                     i;
-    pid_t                   process_id;
-    mqd_t                   queueDesc;
-    struct mq_attr          queueAttr;   
     uint32                  possible_qid;
-    char                    name[OS_MAX_API_NAME * 2];
-    char                    process_id_string[OS_MAX_API_NAME+1];
     sigset_t                previous;
     sigset_t                mask;
-    
+
+    /* Check Parameters */
+
     if ( queue_id == NULL || queue_name == NULL)
     {
         return OS_INVALID_POINTER;
     }
-    
+
     /* we don't want to allow names too long*/
     /* if truncated, two names might be the same */
-    
+
     if (strlen(queue_name) >= OS_MAX_API_NAME)
     {
         return OS_ERR_NAME_TOO_LONG;
     }
-    
-    /* Check Parameters */
-    
-    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous); 
-    
+
+    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous);
+
     for(possible_qid = 0; possible_qid < OS_MAX_QUEUES; possible_qid++)
     {
         if (OS_queue_table[possible_qid].free == TRUE)
             break;
     }
-    
+
     if( possible_qid >= OS_MAX_QUEUES || OS_queue_table[possible_qid].free != TRUE)
     {
-        OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
+        OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
         return OS_ERR_NO_FREE_IDS;
     }
-    
-    /* Check to see if the name is already taken */
 
+    /* Check to see if the name is already taken */
     for (i = 0; i < OS_MAX_QUEUES; i++)
     {
         if ((OS_queue_table[i].free == FALSE) &&
             strcmp ((char*) queue_name, OS_queue_table[i].name) == 0)
         {
-            OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
+            OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
             return OS_ERR_NAME_TAKEN;
         }
-    } 
-    
-    /* Set the possible task Id to not free so that
-     * no other task can try to use it */
-    
-    OS_queue_table[possible_qid].free = FALSE;
-    
-    OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
-    
-    /* set queue attributes */
-    queueAttr.mq_maxmsg  = queue_depth;
-    queueAttr.mq_msgsize = data_size;
-   
-    /*
-    ** Construct the queue name:
-    ** The name will consist of "/<process_id>.queue_name"
-    */
- 
-    /* pre-pend / to queue name */
-    strcpy(name, "/");
-
-    /*
-    ** Get the process ID 
-    */
-    process_id = getpid();
-    sprintf(process_id_string, "%d", process_id);
-    strcat(name, process_id_string);
-    strcat(name,"."); 
-    
-    /*
-    ** Add the name that was passed in
-    */
-    strcat(name, queue_name);
-    
-    /* 
-    ** create message queue 
-    */
-    queueDesc = mq_open(name, O_CREAT | O_RDWR, 0666, &queueAttr);
-    
-    if ( queueDesc == -1 )
-    {
-        OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous); 
-        OS_queue_table[possible_qid].free = TRUE;
-        OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
-        
-        #ifdef OS_DEBUG_PRINTF
-           printf("OS_QueueCreate Error. errno = %d\n",errno);
-        #endif
-        if( errno ==EINVAL)
-        {
-            printf("Your queue depth may be too large for the\n");
-            printf("OS to handle. Please check the msg_max\n");
-            printf("parameter located in /proc/sys/fs/mqueue/msg_max\n");
-            printf("on your Linux file system and raise it if you\n");
-            printf(" need to or run as root\n");
-        }
-        return OS_ERROR;
     }
 
-    /*
-    ** store queue_descriptor
-    */
+    /* Set the possible task Id to not free so that
+     * no other task can try to use it */
     *queue_id = possible_qid;
-    
-    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous); 
-    
-    OS_queue_table[*queue_id].id = queueDesc;
+
+    OS_queue_table[*queue_id].free = FALSE;
+
+    ret = pthread_cond_init(&(OS_queue_table[possible_qid].cv), NULL);
+	if ( ret != 0 )
+	{
+        OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+        return OS_ERROR;
+	}
+
     OS_queue_table[*queue_id].free = FALSE;
     OS_queue_table[*queue_id].max_size = data_size;
     strcpy( OS_queue_table[*queue_id].name, (char*) queue_name);
     OS_queue_table[*queue_id].creator = OS_FindCreator();
-    
-    OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
-    
+	OS_queue_table[*queue_id].width = data_size;
+	OS_queue_table[*queue_id].depth = queue_depth;
+	OS_queue_table[*queue_id].head = -1;
+	OS_queue_table[*queue_id].tail = -1;
+
+    OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+
     return OS_SUCCESS;
-    
+
 }/* end OS_QueueCreate */
+
+
 
 /*--------------------------------------------------------------------------------------
  Name: OS_QueueDelete
- 
+
  Purpose: Deletes the specified message queue.
- 
+
  Returns: OS_ERR_INVALID_ID if the id passed in does not exist
- OS_ERROR if the OS call to delete the queue fails 
+ OS_ERROR if the OS call to delete the queue fails
  OS_SUCCESS if success
- 
+
  Notes: If There are messages on the queue, they will be lost and any subsequent
  calls to QueueGet or QueuePut to this queue will result in errors
  ---------------------------------------------------------------------------------------*/
 int32 OS_QueueDelete (uint32 queue_id)
 {
-    pid_t      process_id;
-    char       name[OS_MAX_API_NAME+1];
-    char       process_id_string[OS_MAX_API_NAME+1];
-    sigset_t   previous;
-    sigset_t   mask;
+	int			ret;
+    sigset_t   	previous;
+    sigset_t   	mask;
 
     /* Check to see if the queue_id given is valid */
-    
+
     if (queue_id >= OS_MAX_QUEUES || OS_queue_table[queue_id].free == TRUE)
     {
        return OS_ERR_INVALID_ID;
     }
-    
-    /*
-    ** Construct the queue name:
-    ** The name will consist of "/<process_id>.queue_name"
-    */
-
-    /* pre-pend / to queue name */
-    strcpy(name, "/");
 
     /*
-    ** Get the process ID
-    */
-    process_id = getpid();
-    sprintf(process_id_string, "%d", process_id);
-    strcat(name, process_id_string);
-    strcat(name,".");
-    
-    strcat(name, OS_queue_table[queue_id].name);
-    
-    /* Try to delete and unlink the queue */
-    if((mq_close(OS_queue_table[queue_id].id) == -1) || (mq_unlink(name) == -1))
-    {
-        return OS_ERROR;
-    }
-    
-    /* 
      * Now that the queue is deleted, remove its "presence"
-     * in OS_message_q_table and OS_message_q_name_table 
+     * in OS_message_q_table and OS_message_q_name_table
      */
-    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous); 
-    
+    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous);
+
+    ret = pthread_cond_destroy(&(OS_queue_table[queue_id].cv));
+	if ( ret != 0 )
+	{
+        OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+        return OS_ERROR;
+	}
+
     OS_queue_table[queue_id].free = TRUE;
     strcpy(OS_queue_table[queue_id].name, "");
     OS_queue_table[queue_id].creator = UNINITIALIZED;
     OS_queue_table[queue_id].max_size = 0;
-    OS_queue_table[queue_id].id = UNINITIALIZED;
-    
-    OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous); 
-    
+	OS_queue_table[queue_id].head = -1;
+	OS_queue_table[queue_id].tail = -1;
+
+    OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+
     return OS_SUCCESS;
-    
+
 } /* end OS_QueueDelete */
+
+
 
 /*---------------------------------------------------------------------------------------
  Name: OS_QueueGet
- 
+
  Purpose: Receive a message on a message queue.  Will pend or timeout on the receive.
  Returns: OS_ERR_INVALID_ID if the given ID does not exist
  OS_ERR_INVALID_POINTER if a pointer passed in is NULL
  OS_QUEUE_EMPTY if the Queue has no messages on it to be recieved
  OS_QUEUE_TIMEOUT if the timeout was OS_PEND and the time expired
- OS_QUEUE_INVALID_SIZE if the size of the buffer passed in is not big enough for the 
-                                  maximum size message 
+ OS_QUEUE_INVALID_SIZE if the size of the buffer passed in is not big enough for the
+                                  maximum size message
  OS_SUCCESS if success
  ---------------------------------------------------------------------------------------*/
 int32 OS_QueueGet (uint32 queue_id, void *data, uint32 size, uint32 *size_copied, int32 timeout)
 {
-    struct mq_attr  queueAttr;
-    int             sizeCopied = -1;
     struct timespec ts;
-    
+    int				ret;
+    sigset_t   		previous;
+    sigset_t   		mask;
+	int32 			headIndex;
+	OS_queue_data_t *qData = 0;
+
     /*
-    ** Check Parameters 
+    ** Check Parameters
     */
     if(queue_id >= OS_MAX_QUEUES || OS_queue_table[queue_id].free == TRUE)
     {
@@ -1763,161 +1263,198 @@ int32 OS_QueueGet (uint32 queue_id, void *data, uint32 size, uint32 *size_copied
     }
     else if( size < OS_queue_table[queue_id].max_size )
     {
-        /* 
+        /*
         ** The buffer that the user is passing in is potentially too small
         ** RTEMS will just copy into a buffer that is too small
         */
         *size_copied = 0;
-        return(OS_QUEUE_INVALID_SIZE);
+        return OS_QUEUE_INVALID_SIZE;
     }
 
-    /*
-    ** Read the message queue for data
-    */
-    if (timeout == OS_PEND) 
-    {      
-        /*
-        ** A signal can interrupt the mq_receive call, so the call has to be done with 
-        ** a loop
-        */
-        do 
-        {
-           sizeCopied = mq_receive(OS_queue_table[queue_id].id, data, size, NULL);
-        } while ((sizeCopied == -1) && (errno == EINTR));
+    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous);
 
-        if (sizeCopied == -1)
-        {
-            *size_copied = 0;
-            return(OS_ERROR);
-        }
-        else
-        { 
-           *size_copied = sizeCopied;
-        }
-    }
-    else if (timeout == OS_CHECK)
-    {      
-        /* get queue attributes */
-        if(mq_getattr(OS_queue_table[queue_id].id, &queueAttr))
-        {
-            *size_copied = 0;
-            return (OS_ERROR);
-        }
-        
-        /* check how many messages in queue */
-        if(queueAttr.mq_curmsgs > 0) 
-        {
-            do
-            {
-                sizeCopied  = mq_receive(OS_queue_table[queue_id].id, data, size, NULL);
-            } while ( sizeCopied == -1 && errno == EINTR );
-            
-            if (sizeCopied == -1)
-            {
-                *size_copied = 0;
-                return(OS_ERROR);
-            }
-            else
-            {
-               *size_copied = sizeCopied;
-            }
-        } 
-        else 
-        {
-            *size_copied = 0;
-            return (OS_QUEUE_EMPTY);
-        }
-        
-    }
-    else /* timeout */ 
+    if(OS_queue_table[queue_id].head == -1)
     {
-        OS_CompAbsDelayTime( timeout , &ts) ;
-
-        /*
-        ** If the mq_timedreceive call is interrupted by a system call or signal,
-        ** call it again.
-        */
-        do
-        {
-           sizeCopied = mq_timedreceive(OS_queue_table[queue_id].id, data, size, NULL, &ts);
-        } while ( sizeCopied == -1 && errno == EINTR );
-        
-        if((sizeCopied == -1) && (errno == ETIMEDOUT))
-        {
-            return(OS_QUEUE_TIMEOUT);
-        }
-        else if (sizeCopied == -1)
-        {
+    	if (timeout == OS_PEND)
+    	{
+    		/*
+    		 ** A signal can interrupt the mq_receive call, so the call has to be done with
+    		 ** a loop
+    		 */
+    		do
+    		{
+    			ret = pthread_cond_wait(&OS_queue_table[queue_id].cv, &OS_queue_table_mut);
+    			if(ret < 0)
+    			{
+    				*size_copied = 0;
+    			    OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+    				return OS_ERROR;
+    			}
+    		} while ((OS_queue_table[queue_id].head == -1));
+    	}
+    	else if (timeout == OS_CHECK)
+    	{
+        	/* The queue is empty so return 0. */
             *size_copied = 0;
-            return(OS_ERROR);
+			OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+			return OS_QUEUE_EMPTY;
+    	}
+    	else /* timeout */
+    	{
+    		OS_CompAbsDelayTime( timeout , &ts) ;
+
+    		do
+			{
+				ret = pthread_cond_timedwait(&OS_queue_table[queue_id].cv, &OS_queue_table_mut, &ts);
+				if((ret < 0) && (ret != ETIMEDOUT))
+				{
+    				*size_copied = 0;
+    				OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+    				return OS_ERROR;
+				}
+			} while (OS_queue_table[queue_id].head == -1);
+
+    		if(ret == ETIMEDOUT)
+    		{
+				*size_copied = 0;
+				OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+				return OS_QUEUE_TIMEOUT;
+    		}
         }
-        else
-        {
-            *size_copied = sizeCopied;
-        }
-        
-    } /* END timeout */
-    
-    return OS_SUCCESS;
-    
+    }
+
+	/* The queue is not empty.  Pop an object from the head. */
+	headIndex = OS_queue_table[queue_id].head;
+	qData = &OS_queue_table[queue_id].qData[headIndex];
+	memcpy(data, &qData->buffer[0], qData->size);
+	if(qData->size != size)
+	{
+		*size_copied = 0;
+		OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+		return OS_QUEUE_INVALID_SIZE;
+	}
+
+	*size_copied = qData->size;
+
+	/* Check to see if there are more objects in the queue. */
+	if(OS_queue_table[queue_id].tail == headIndex)
+	{
+		/* There are no more objects in the queue.  Set the queue to empty
+		 * by setting the head to -1.
+		 */
+		OS_queue_table[queue_id].head = -1;
+	}
+	else
+	{
+		/* There are more objects in the queue.  Move the head to the next
+		 * object. */
+		if((headIndex + 1) >= OS_MAX_QUEUE_DEPTH)
+		{
+			/* The head is at the end of the array.  Move it back to the
+			 * beginning.
+			 */
+			OS_queue_table[queue_id].head = 0;
+		}
+		else
+		{
+			OS_queue_table[queue_id].head++;
+		}
+	}
+
+	OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+
+	return OS_SUCCESS;
 } /* end OS_QueueGet */
+
+
 
 /*---------------------------------------------------------------------------------------
  Name: OS_QueuePut
- 
+
  Purpose: Put a message on a message queue.
- 
+
  Returns: OS_ERR_INVALID_ID if the queue id passed in is not a valid queue
  OS_INVALID_POINTER if the data pointer is NULL
  OS_QUEUE_FULL if the queue cannot accept another message
  OS_ERROR if the OS call returns an error
- OS_SUCCESS if SUCCESS            
- 
+ OS_SUCCESS if SUCCESS
+
  Notes: The flags parameter is not used.  The message put is always configured to
  immediately return an error if the receiving message queue is full.
  ---------------------------------------------------------------------------------------*/
 int32 OS_QueuePut (uint32 queue_id, void *data, uint32 size, uint32 flags)
 {
-    struct mq_attr  queueAttr;
-    
+    sigset_t   		previous;
+    sigset_t   		mask;
+    OS_queue_data_t *qData;
+    int				ret;
+
     /*
-    ** Check Parameters 
+    ** Check Parameters
     */
     if(queue_id >= OS_MAX_QUEUES || OS_queue_table[queue_id].free == TRUE)
     {
        return OS_ERR_INVALID_ID;
     }
-    
+
     if (data == NULL)
     {
        return OS_INVALID_POINTER;
     }
-    
+
+    if(size > OS_queue_table[queue_id].width)
+    {
+    	return OS_QUEUE_INVALID_SIZE;
+    }
+
     /* get queue attributes */
-    if(mq_getattr(OS_queue_table[queue_id].id, &queueAttr))
+    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous);
+
+    /* Check if queue is full. */
+    if(((OS_queue_table[queue_id].head == 0) && (OS_queue_table[queue_id].tail == (OS_MAX_QUEUE_DEPTH-1))) ||
+       (OS_queue_table[queue_id].tail == (OS_queue_table[queue_id].head - 1)))
     {
-       return (OS_ERROR);
+    	OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+    	return OS_QUEUE_FULL;
     }
-    
-    /* check if queue is full */
-    if(queueAttr.mq_curmsgs >= queueAttr.mq_maxmsg) 
+
+    if(OS_queue_table[queue_id].head == -1)
     {
-       return(OS_QUEUE_FULL);
+    	OS_queue_table[queue_id].head = 0;
+    	OS_queue_table[queue_id].tail = 0;
     }
-    
-    /* send message */
-    if(mq_send(OS_queue_table[queue_id].id, data, size, 1) == -1) 
+    else
     {
-        return(OS_ERROR);
+		/* Determine where to move the tail. */
+		if((OS_queue_table[queue_id].tail + 1) >= OS_MAX_QUEUE_DEPTH)
+		{
+			/* The tail is at the end of the array.  Move it back to the beginning.
+			 */
+			OS_queue_table[queue_id].tail = 0;
+		}
+		else
+		{
+			OS_queue_table[queue_id].tail++;
+		}
     }
-    
+
+    /* Copy the data to the new tail object. */
+    qData = &OS_queue_table[queue_id].qData[OS_queue_table[queue_id].tail];
+    memcpy(&qData->buffer, data, size);
+    qData->size = size;
+    ret = pthread_cond_signal(&OS_queue_table[queue_id].cv);
+    if(ret < 0)
+    {
+    	OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+    	return OS_ERROR;
+    }
+
+	OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
+
     return OS_SUCCESS;
 
 } /* end OS_QueuePut */
 
-
-/* --------------------- END POSIX MESSAGE QUEUE IMPLEMENTATION ---------------------- */
-#endif
 
 /*--------------------------------------------------------------------------------------
     Name: OS_QueueGetIdByName
