@@ -1,3 +1,4 @@
+# Collect OSAL includes and sources
 set(OSAL_SRC 
 	${CMAKE_CURRENT_SOURCE_DIR}/osapi.c 
 	${CMAKE_CURRENT_SOURCE_DIR}/osfileapi.c 
@@ -7,7 +8,6 @@ set(OSAL_SRC
 	${CMAKE_CURRENT_SOURCE_DIR}/ostimer.c 
 	PARENT_SCOPE)
 
-	
 set(OSAL_INC_DIRS 
 	${CMAKE_CURRENT_SOURCE_DIR}/../inc
 	${CMAKE_CURRENT_SOURCE_DIR}
