@@ -1306,13 +1306,13 @@ int32 OS_QueueGet (uint32 queue_id, void *data, uint32 size, uint32 *size_copied
     		do
 			{
 				ret = pthread_cond_timedwait(&OS_queue_table[queue_id].cv, &OS_queue_table_mut, &ts);
-				if((ret < 0) && (ret != ETIMEDOUT))
+				if(ret < 0)
 				{
     				*size_copied = 0;
     				OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
     				return OS_ERROR;
 				}
-			} while (OS_queue_table[queue_id].head == -1);
+			} while ((OS_queue_table[queue_id].head == -1) && (ret != ETIMEDOUT));
 
     		if(ret == ETIMEDOUT)
     		{

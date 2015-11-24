@@ -10,5 +10,8 @@ set(OSAL_SRC
 
 set(OSAL_INC_DIRS 
 	${CMAKE_CURRENT_SOURCE_DIR}/../inc
-	${CMAKE_CURRENT_SOURCE_DIR}
-	PARENT_SCOPE)
+	${CMAKE_CURRENT_SOURCE_DIR})
+	
+add_subdirectory(unit-tests unit-tests)
+
+set(OSAL_INC_DIRS ${OSAL_INC_DIRS} PARENT_SCOPE)

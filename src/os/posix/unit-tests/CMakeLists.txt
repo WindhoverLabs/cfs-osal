@@ -1,0 +1,6 @@
+add_subdirectory(oscore-test core)
+add_subdirectory(osfilesys-test filesys)
+add_subdirectory(osfile-test file)
+add_subdirectory(osloader-test loader)
+add_subdirectory(osnetwork-test network)
+add_subdirectory(ostimer-test timer)
