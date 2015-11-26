@@ -189,8 +189,9 @@ void UT_os_count_sem_create_test()
 
     /*-----------------------------------------------------*/
     testDesc = "#4 Initial-count-too-high";
+    uint32 MaxSemValue = SEM_VALUE_MAX;
 
-    res = OS_CountSemCreate(&count_sem_ids[0], "CountSem1", SEM_VALUE_MAX + 1, 0);
+    res = OS_CountSemCreate(&count_sem_ids[0], "CountSem1", MaxSemValue+1, 0);
     if (res == OS_INVALID_SEM_VALUE)
         UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_PASSED)
     else

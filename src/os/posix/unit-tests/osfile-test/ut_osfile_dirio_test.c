@@ -539,7 +539,7 @@ void UT_os_readdir_test()
     /*-----------------------------------------------------*/
     testDesc = "API not implemented";
 
-    if (OS_readdir(NULL) == OS_FS_UNIMPLEMENTED)
+    if (OS_readdir(NULL) == (void*)OS_FS_UNIMPLEMENTED)
     {
         UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_NA)
         goto UT_os_readdir_test_exit_tag;
