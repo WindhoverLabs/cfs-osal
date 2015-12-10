@@ -187,7 +187,7 @@ void UT_os_symbol_lookup_test()
     }
     else
     {
-        res = OS_SymbolLookup(&symbol_addr, "module0");
+        res = OS_SymbolLookup(&symbol_addr, "MODULE_NAME");
         if (res == OS_SUCCESS)
             UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_PASSED)
         else

@@ -13,6 +13,16 @@ include_directories(
 
 add_definitions(-DCFE_LINUX)
 
+# Create the directories for the unit tests to mount devices to.
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ram0)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ram1)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ram2)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ram3)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ram4)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ram5)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ram6)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ram7)
+
 # Add the executables
 add_executable(OSAL-File-UT 
 		${CMAKE_CURRENT_SOURCE_DIR}/ut_osfile_dirio_test.c 
@@ -20,8 +30,8 @@ add_executable(OSAL-File-UT
 		${CMAKE_CURRENT_SOURCE_DIR}/ut_osfile_test.c
 		${CMAKE_CURRENT_SOURCE_DIR}/../../osapi.c
 		${CMAKE_CURRENT_SOURCE_DIR}/../../osfileapi.c
+		${CMAKE_CURRENT_SOURCE_DIR}/../../osfilesys.c
 		${CMAKE_CURRENT_SOURCE_DIR}/../shared/ut_os_stubs.c
-		${CMAKE_CURRENT_SOURCE_DIR}/../shared/ut_osfilesys_stubs.c
 		${CMAKE_CURRENT_SOURCE_DIR}/../shared/ut_osloader_stubs.c
 		${CMAKE_CURRENT_SOURCE_DIR}/../shared/ut_osnetwork_stubs.c
 		${CMAKE_CURRENT_SOURCE_DIR}/../shared/ut_ostimer_stubs.c

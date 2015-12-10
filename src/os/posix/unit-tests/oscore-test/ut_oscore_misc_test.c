@@ -610,6 +610,12 @@ void UT_os_setlocaltime_test()
     time_struct.microsecs = 123;
 
     res = OS_SetLocalTime(&time_struct);
+    if (res == OS_ERR_NOT_IMPLEMENTED)
+    {
+        testDesc = "API not implemented";
+        UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_NA)
+        goto UT_os_setlocaltime_test_exit_tag;
+    }
     if (res == OS_SUCCESS)
     {
     	memset(text, '\0', sizeof(text));

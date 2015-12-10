@@ -1121,7 +1121,10 @@ int32 OS_QueueCreate (uint32 *queue_id, const char *queue_name, uint32 queue_dep
         return OS_ERR_NAME_TOO_LONG;
     }
 
-    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous);
+    /* Ensure the queue depth isn't larger than our maximum depth. */
+    if(queue_depth > OS_MAX_QUEUE_DEPTH) {
+    	return OS_QUEUE_INVALID_SIZE;
+    }
 
     for(possible_qid = 0; possible_qid < OS_MAX_QUEUES; possible_qid++)
     {
@@ -1411,7 +1414,7 @@ int32 OS_QueuePut (uint32 queue_id, void *data, uint32 size, uint32 flags)
     OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous);
 
     /* Check if queue is full. */
-    if(((OS_queue_table[queue_id].head == 0) && (OS_queue_table[queue_id].tail == (OS_MAX_QUEUE_DEPTH-1))) ||
+    if(((OS_queue_table[queue_id].head == 0) && (OS_queue_table[queue_id].tail == (OS_queue_table[queue_id].depth-1))) ||
        (OS_queue_table[queue_id].tail == (OS_queue_table[queue_id].head - 1)))
     {
     	OS_InterruptSafeUnlock(&OS_queue_table_mut, &previous);
@@ -1426,7 +1429,7 @@ int32 OS_QueuePut (uint32 queue_id, void *data, uint32 size, uint32 flags)
     else
     {
 		/* Determine where to move the tail. */
-		if((OS_queue_table[queue_id].tail + 1) >= OS_MAX_QUEUE_DEPTH)
+		if((OS_queue_table[queue_id].tail + 1) >= OS_queue_table[queue_id].depth)
 		{
 			/* The tail is at the end of the array.  Move it back to the beginning.
 			 */
@@ -3243,11 +3246,21 @@ int32 OS_SetLocalTime(OS_time_t *time_struct)
        return OS_INVALID_POINTER;
     }
 
+    /* Check to see if we're running as root.  Only root has access to change
+     * the local time.
+     */
+    if (geteuid() != 0 ) {
+    	/* We are not running as root.  Return Not Implemented since we can't
+    	 * the time.
+    	 */
+    	return OS_ERR_NOT_IMPLEMENTED;
+    }
+
     time.tv_sec = time_struct -> seconds;
     time.tv_nsec = (time_struct -> microsecs * 1000);
 
     Status = clock_settime(CLOCK_REALTIME, &time);
-
+    printf("%u\n", errno);
     if (Status == 0)
     {
         ReturnCode = OS_SUCCESS;

@@ -2046,6 +2046,9 @@ void UT_os_movefile_test()
         goto UT_os_movefile_test_exit_tag;
     }
 
+    /* Close the file so we can move it. */
+    OS_close(g_fDescs[0]);
+
     if (OS_mv(g_fNames[0], g_fNames[1]) != OS_FS_SUCCESS)
     {
         UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_FAILED)
@@ -2059,7 +2062,6 @@ void UT_os_movefile_test()
         UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_FAILED)
 
     /* Reset test environment */
-    OS_close(g_fDescs[0]);
     OS_remove(g_fNames[1]);
 
 UT_os_movefile_test_exit_tag:

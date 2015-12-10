@@ -255,7 +255,7 @@ int32 OS_ModuleLoad ( uint32 *module_id, char *module_name, char *filename )
    */
    
    /* 
-   ** Open the loadble bundle .. just opening it loads it into the system.
+   ** Open the loadable bundle .. just opening it loads it into the system.
    */
    function_lib = dlopen(translated_path, RTLD_LAZY | RTLD_GLOBAL);
    dl_error = dlerror();

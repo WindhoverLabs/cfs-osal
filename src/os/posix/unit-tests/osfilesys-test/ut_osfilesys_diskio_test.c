@@ -1054,7 +1054,7 @@ void UT_os_checkfs_test()
     testDesc = "API not implemented";
 
     res = OS_chkfs(NULL, 0);
-    if (res == OS_ERR_NOT_IMPLEMENTED)
+    if (res == OS_FS_UNIMPLEMENTED)
     {
         UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_NA)
         goto UT_os_checkfs_test_exit_tag;
