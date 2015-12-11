@@ -55,7 +55,7 @@ add_executable(sb_UT
 		${CMAKE_CURRENT_SOURCE_DIR}/ut_tbl_stubs.c
 		${CMAKE_CURRENT_SOURCE_DIR}/ut_time_stubs.c
 		${CFE_SB_SRC})
-target_link_libraries(sb_UT -fprofile-arcs gcov)
+target_link_libraries(sb_UT -fprofile-arcs -lrt gcov)
 add_test(cfe-sb ${EXECUTABLE_OUTPUT_PATH}/sb_UT)
 
 add_executable(fs_UT 
