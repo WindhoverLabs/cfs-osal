@@ -32,7 +32,7 @@ add_executable(OSAL-Core-UT
 		${CMAKE_CURRENT_SOURCE_DIR}/../shared/ut_osnetwork_stubs.c
 		${CMAKE_CURRENT_SOURCE_DIR}/../shared/ut_ostimer_stubs.c
 		${CMAKE_CURRENT_SOURCE_DIR}/../shared/ut_psp_voltab_stubs.c)
-target_link_libraries(OSAL-Core-UT -fprofile-arcs gcov ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(OSAL-Core-UT -fprofile-arcs gcov ${CMAKE_THREAD_LIBS_INIT} -lrt)
 add_test(osal-core ${EXECUTABLE_OUTPUT_PATH}/OSAL-Core-UT)
 
 add_definitions(-fprofile-arcs -ftest-coverage)
