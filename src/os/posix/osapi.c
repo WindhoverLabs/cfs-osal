@@ -127,6 +127,8 @@
    #define PTHREAD_STACK_MIN 8092
 #endif
 
+#define OS_API_UNINITIALIZED 0
+#define OS_API_INITIALIZED   1
 
 /*
 ** Global data for the API
@@ -135,6 +137,7 @@
 /*  
 ** Tables for the properties of objects 
 */
+uint32 OS_API_Initialized = OS_API_UNINITIALIZED;
 
 /*tasks */
 typedef struct
@@ -427,6 +430,9 @@ int32 OS_API_Init(void)
           }
        #endif
    }
+
+   OS_API_Initialized = OS_API_INITIALIZED;
+
    return(return_code);
 }
 
@@ -469,6 +475,11 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
     sigset_t           previous;
     sigset_t           mask;
     
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check for NULL pointers */    
     if( (task_name == NULL) || (function_pointer == NULL) || (task_id == NULL) )
     {
@@ -698,6 +709,11 @@ int32 OS_TaskDelete (uint32 task_id)
     FuncPtr_t FunctionPointer;
     sigset_t  previous;
     sigset_t  mask;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
     
     /* 
     ** Check to see if the task_id given is valid 
@@ -793,6 +809,11 @@ int32 OS_TaskDelay(uint32 millisecond )
     uint32          ms = millisecond;
     int             sleepstat;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     waittime.tv_sec  = ms / 1000;
     waittime.tv_nsec = (ms % 1000) * 1000000;
 
@@ -831,6 +852,11 @@ int32 OS_TaskSetPriority (uint32 task_id, uint32 new_priority)
 {
     int                os_priority;
     int                ret;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     if(task_id >= OS_MAX_TASKS || OS_task_table[task_id].free == TRUE)
     {
@@ -885,6 +911,11 @@ int32 OS_TaskRegister (void)
     int          ret;
     uint32       task_id;
     pthread_t    pthread_id;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     /* 
     ** Get PTHREAD Id
@@ -962,6 +993,11 @@ int32 OS_TaskGetIdByName (uint32 *task_id, const char *task_name)
 {
     uint32 i;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     if (task_id == NULL || task_name == NULL)
     {
        return OS_INVALID_POINTER;
@@ -1008,6 +1044,11 @@ int32 OS_TaskGetInfo (uint32 task_id, OS_task_prop_t *task_prop)
     sigset_t  previous;
     sigset_t  mask;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* 
     ** Check to see that the id given is valid 
     */
@@ -1050,6 +1091,11 @@ int32 OS_TaskInstallDeleteHandler(void *function_pointer)
     uint32    task_id;
     sigset_t  previous;
     sigset_t  mask;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     task_id = OS_TaskGetId();
 
@@ -1106,6 +1152,11 @@ int32 OS_QueueCreate (uint32 *queue_id, const char *queue_name, uint32 queue_dep
     sigset_t                previous;
     sigset_t                mask;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check Parameters */
 
     if ( queue_id == NULL || queue_name == NULL)
@@ -1125,6 +1176,8 @@ int32 OS_QueueCreate (uint32 *queue_id, const char *queue_name, uint32 queue_dep
     if(queue_depth > OS_MAX_QUEUE_DEPTH) {
     	return OS_QUEUE_INVALID_SIZE;
     }
+
+    OS_InterruptSafeLock(&OS_queue_table_mut, &mask, &previous);
 
     for(possible_qid = 0; possible_qid < OS_MAX_QUEUES; possible_qid++)
     {
@@ -1197,6 +1250,11 @@ int32 OS_QueueDelete (uint32 queue_id)
     sigset_t   	previous;
     sigset_t   	mask;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check to see if the queue_id given is valid */
 
     if (queue_id >= OS_MAX_QUEUES || OS_queue_table[queue_id].free == TRUE)
@@ -1252,6 +1310,11 @@ int32 OS_QueueGet (uint32 queue_id, void *data, uint32 size, uint32 *size_copied
     sigset_t   		mask;
 	int32 			headIndex;
 	OS_queue_data_t *qData = 0;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     /*
     ** Check Parameters
@@ -1392,6 +1455,11 @@ int32 OS_QueuePut (uint32 queue_id, void *data, uint32 size, uint32 flags)
     OS_queue_data_t *qData;
     int				ret;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /*
     ** Check Parameters
     */
@@ -1476,6 +1544,11 @@ int32 OS_QueueGetIdByName (uint32 *queue_id, const char *queue_name)
 {
     uint32 i;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     if(queue_id == NULL || queue_name == NULL)
     {
        return OS_INVALID_POINTER;
@@ -1519,6 +1592,11 @@ int32 OS_QueueGetInfo (uint32 queue_id, OS_queue_prop_t *queue_prop)
 {
     sigset_t   previous;
     sigset_t   mask;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     /* Check to see that the id given is valid */
     
@@ -1574,6 +1652,11 @@ int32 OS_BinSemCreate (uint32 *sem_id, const char *sem_name, uint32 sem_initial_
     pthread_mutexattr_t mutex_attr;    
     sigset_t            previous;
     sigset_t            mask;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     /* 
     ** Check Parameters 
@@ -1728,6 +1811,11 @@ int32 OS_BinSemDelete (uint32 sem_id)
     sigset_t            previous;
     sigset_t            mask;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check to see if this sem_id is valid */
     if (sem_id >= OS_MAX_BIN_SEMAPHORES || OS_bin_sem_table[sem_id].free == TRUE)
     {
@@ -1775,7 +1863,12 @@ int32 OS_BinSemGive ( uint32 sem_id )
     int       ret;
     sigset_t  previous;
     sigset_t  mask;
-   
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check Parameters */
     if(sem_id >= OS_MAX_BIN_SEMAPHORES || OS_bin_sem_table[sem_id].free == TRUE)
     {
@@ -1821,6 +1914,11 @@ int32 OS_BinSemFlush (uint32 sem_id)
     int32     ret = 0;
     sigset_t  previous;
     sigset_t  mask;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     /* Check Parameters */
     if(sem_id >= OS_MAX_BIN_SEMAPHORES || OS_bin_sem_table[sem_id].free == TRUE)
@@ -1874,7 +1972,12 @@ int32 OS_BinSemTake ( uint32 sem_id )
     int       ret;
     sigset_t  previous;
     sigset_t  mask;
-   
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check parameters */ 
     if(sem_id >= OS_MAX_BIN_SEMAPHORES  || OS_bin_sem_table[sem_id].free == TRUE)
     {
@@ -1951,6 +2054,11 @@ int32 OS_BinSemTimedWait ( uint32 sem_id, uint32 msecs )
     sigset_t         previous;
     sigset_t         mask;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     if( (sem_id >= OS_MAX_BIN_SEMAPHORES) || (OS_bin_sem_table[sem_id].free == TRUE) )
     {
        return OS_ERR_INVALID_ID;
@@ -2024,6 +2132,11 @@ int32 OS_BinSemGetIdByName (uint32 *sem_id, const char *sem_name)
 {
     uint32 i;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check parameters */
     if (sem_id == NULL || sem_name == NULL)
     {
@@ -2071,6 +2184,11 @@ int32 OS_BinSemGetInfo (uint32 sem_id, OS_bin_sem_prop_t *bin_prop)
 {
     sigset_t    previous;
     sigset_t    mask;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     /* Check parameters */
     if (sem_id >= OS_MAX_BIN_SEMAPHORES || OS_bin_sem_table[sem_id].free == TRUE)
@@ -2122,6 +2240,11 @@ int32 OS_CountSemCreate (uint32 *sem_id, const char *sem_name, uint32 sem_initia
     pthread_mutexattr_t mutex_attr;    
     sigset_t            previous;
     sigset_t            mask;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     /* 
     ** Check Parameters 
@@ -2276,6 +2399,11 @@ int32 OS_CountSemDelete (uint32 sem_id)
     sigset_t            previous;
     sigset_t            mask;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check to see if this sem_id is valid */
     if (sem_id >= OS_MAX_COUNT_SEMAPHORES || OS_count_sem_table[sem_id].free == TRUE)
     {
@@ -2322,7 +2450,12 @@ int32 OS_CountSemGive ( uint32 sem_id )
     int       ret;
     sigset_t  previous;
     sigset_t  mask;
-   
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check Parameters */
     if(sem_id >= OS_MAX_COUNT_SEMAPHORES || OS_count_sem_table[sem_id].free == TRUE)
     {
@@ -2376,7 +2509,12 @@ int32 OS_CountSemTake ( uint32 sem_id )
     int       ret;
     sigset_t  previous;
     sigset_t  mask;
-   
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check parameters */ 
     if(sem_id >= OS_MAX_COUNT_SEMAPHORES  || OS_count_sem_table[sem_id].free == TRUE)
     {
@@ -2452,6 +2590,11 @@ int32 OS_CountSemTimedWait ( uint32 sem_id, uint32 msecs )
     sigset_t         previous;
     sigset_t         mask;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     if( (sem_id >= OS_MAX_COUNT_SEMAPHORES) || (OS_count_sem_table[sem_id].free == TRUE) )
     {
        return OS_ERR_INVALID_ID;
@@ -2525,6 +2668,11 @@ int32 OS_CountSemGetIdByName (uint32 *sem_id, const char *sem_name)
 {
     uint32 i;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     if (sem_id == NULL || sem_name == NULL)
     {
         return OS_INVALID_POINTER;
@@ -2571,6 +2719,11 @@ int32 OS_CountSemGetInfo (uint32 sem_id, OS_count_sem_prop_t *count_prop)
 {
     sigset_t    previous;
     sigset_t    mask;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     /* 
     ** Check to see that the id given is valid 
@@ -2631,6 +2784,11 @@ int32 OS_MutSemCreate (uint32 *sem_id, const char *sem_name, uint32 options)
     uint32              i;      
     sigset_t            previous;
     sigset_t            mask;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     /* Check Parameters */
     if (sem_id == NULL || sem_name == NULL)
@@ -2784,6 +2942,11 @@ int32 OS_MutSemDelete (uint32 sem_id)
     sigset_t  previous;
     sigset_t  mask;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check to see if this sem_id is valid   */
     if (sem_id >= OS_MAX_MUTEXES || OS_mut_sem_table[sem_id].free == TRUE)
     {
@@ -2830,6 +2993,11 @@ int32 OS_MutSemGive ( uint32 sem_id )
 {
     uint32 ret_val ;
 
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
+
     /* Check Parameters */
 
     if(sem_id >= OS_MAX_MUTEXES || OS_mut_sem_table[sem_id].free == TRUE)
@@ -2869,6 +3037,11 @@ int32 OS_MutSemGive ( uint32 sem_id )
 int32 OS_MutSemTake ( uint32 sem_id )
 {
     int status;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     /* 
     ** Check Parameters
@@ -2915,6 +3088,11 @@ int32 OS_MutSemTake ( uint32 sem_id )
 int32 OS_MutSemGetIdByName (uint32 *sem_id, const char *sem_name)
 {
     uint32 i;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     if(sem_id == NULL || sem_name == NULL)
     {
@@ -2963,6 +3141,11 @@ int32 OS_MutSemGetInfo (uint32 sem_id, OS_mut_sem_prop_t *mut_prop)
 {
     sigset_t  previous;
     sigset_t  mask;
+
+    /* Ensure the OSAL API is initialized first. */
+    if(OS_API_Initialized != OS_API_INITIALIZED) {
+    	return OS_ERROR;
+    }
 
     /* Check to see that the id given is valid */
     
@@ -3637,6 +3820,8 @@ int32 OS_FPUExcGetMask(uint32 *mask)
 int OS_InterruptSafeLock(pthread_mutex_t *lock, sigset_t *set, sigset_t *previous)
 {
     /* Block all signals */
+    sigemptyset(set);
+    sigemptyset(previous);
     sigfillset(set);
 
     if (pthread_sigmask(SIG_SETMASK, set, previous) == 0) 
@@ -3663,6 +3848,7 @@ void OS_InterruptSafeUnlock(pthread_mutex_t *lock, sigset_t *previous)
     pthread_mutex_unlock(lock);
 
     /* Restore previous signals */
-    pthread_sigmask(SIG_SETMASK, previous, NULL);
+    pthread_sigmask(SIG_SETMASK, previous, 0);
+    sigdelset(previous, 0);
 }
 

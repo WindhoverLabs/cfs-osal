@@ -39,8 +39,8 @@ int32 g_blkCnt  = UT_OS_FS_MAX_BLOCKS;
 int32  g_skipTestCase = -1;
 char*  g_skipTestCaseResult = " ";
 
-char  g_fsLongName[OS_MAX_PATH_LEN+5];
-char  g_physDriveName[OS_MAX_PATH_LEN];
+char  g_fsLongName[OS_MAX_PATH_LEN+5] = "";
+char  g_physDriveName[OS_MAX_PATH_LEN] = "";
 
 char  g_volNames[UT_OS_FILESYS_LIST_LEN][UT_OS_XS_TEXT_LEN];
 char  g_devNames[UT_OS_FILESYS_LIST_LEN][UT_OS_XS_TEXT_LEN];

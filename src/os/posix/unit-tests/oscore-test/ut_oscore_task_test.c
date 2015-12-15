@@ -267,6 +267,9 @@ void UT_os_task_create_test()
         {
             memset(task_name, '\0', sizeof(task_name));
             UT_os_sprintf(task_name, "CREATE_TASK%d", (int)i);
+            if(i>=OS_MAX_TASKS) {
+            	printf("Hello world\n");
+            }
             res = OS_TaskCreate(&g_task_ids[i], task_name, generic_test_task, g_task_stacks[i],
                                 UT_TASK_STACK_SIZE, UT_TASK_PRIORITY, 0);
             if (res != OS_SUCCESS)

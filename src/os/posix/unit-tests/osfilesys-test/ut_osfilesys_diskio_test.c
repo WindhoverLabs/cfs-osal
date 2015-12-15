@@ -809,7 +809,7 @@ void UT_os_getphysdrivename_test()
     int32 res=0, idx=0;
     UT_OsApiInfo_t apiInfo;
     const char* testDesc=NULL;
-    char physDevName[UT_OS_LG_TEXT_LEN];
+    char physDevName[UT_OS_LG_TEXT_LEN] = "";
 
     UT_OS_CLEAR_API_INFO_MACRO(apiInfo, idx)
 

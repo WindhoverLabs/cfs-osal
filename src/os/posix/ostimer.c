@@ -409,7 +409,7 @@ int32 OS_TimerSet(uint32 timer_id, uint32 start_time, uint32 interval_time)
    status = timer_settime((timer_t)(OS_timer_table[timer_id].host_timerid), 
                              0,              /* Flags field can be zero */
                              &timeout,       /* struct itimerspec */
-		             NULL);         /* Oldvalue */
+		            		 0);         /* Oldvalue */
    if (status < 0) 
    {
       return ( OS_TIMER_ERR_INTERNAL);
