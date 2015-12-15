@@ -158,7 +158,7 @@ int32  OS_TimerAPIInit ( void )
 */
 void OS_TimerSignalHandler(int signum)
 {
-   uint32  timer_id;
+   uint32  timer_id = 0;
 
    timer_id = OS_STARTING_SIGNAL - signum;
 
