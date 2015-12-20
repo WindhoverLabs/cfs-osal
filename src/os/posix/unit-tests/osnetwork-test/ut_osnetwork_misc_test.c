@@ -153,28 +153,10 @@ void UT_os_networkgetid_test()
     UT_OS_CLEAR_API_INFO_MACRO(apiInfo, idx)
 
     /*-----------------------------------------------------*/
-    testDesc = "API Not implemented";
+    testDesc = "#1 Nominal";
 
     res = OS_NetworkGetID();
-    if (res == OS_ERR_NOT_IMPLEMENTED)
-    {
-        UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_NA)
-        goto UT_os_networkgetid_test_exit_tag;
-    }
-
-    /*-----------------------------------------------------*/
-    testDesc = "#1 OS-call-failure";
-
-    UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_UOF)
-
-    /*-----------------------------------------------------*/
-    testDesc = "#2 Nominal";
-
-    res = OS_NetworkGetID();
-    if (res > 0)
-        UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_PASSED)
-    else
-        UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_FAILED)
+    UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_PASSED)
 
 UT_os_networkgetid_test_exit_tag:
     UT_OS_SET_API_NAME_AND_TEST_COUNT_MACRO(apiInfo, "OS_NetworkGetID", idx)
