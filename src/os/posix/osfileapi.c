@@ -248,13 +248,9 @@ int32 OS_creat  (const char *path, int32  access)
      * task can take that ID */
     OS_FDTable[PossibleFD].IsValid =    TRUE;
 
-    OS_InterruptSafeUnlock(&OS_FDTableMutex, &previous);
-
     mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
    
     status =  open(local_path, perm | O_CREAT | O_TRUNC, mode);
-
-    OS_InterruptSafeLock(&OS_FDTableMutex, &mask, &previous);
 
     if (status != ERROR)
     {
@@ -370,12 +366,8 @@ int32 OS_open   (const char *path,  int32 access,  uint32  mode)
      * task can take that ID */
     OS_FDTable[PossibleFD].IsValid = TRUE;
 
-    OS_InterruptSafeUnlock(&OS_FDTableMutex, &previous);
-
     /* open the file  */
     status =  open(local_path, perm, mode);
-
-    OS_InterruptSafeLock(&OS_FDTableMutex, &mask, &previous);
 
     if (status != ERROR)
     {
@@ -421,6 +413,7 @@ int32 OS_close (int32  filedes)
     }
     else
     {    
+	OS_InterruptSafeLock(&OS_FDTableMutex, &mask, &previous);
 
         /*
         ** call close, and check for an interrupted system call 
@@ -437,7 +430,6 @@ int32 OS_close (int32  filedes)
             ** to free up that slot 
             */
             /* fill in the table before returning */
-            OS_InterruptSafeLock(&OS_FDTableMutex, &mask, &previous);
             OS_FDTable[filedes].OSfd =       -1;
             strcpy(OS_FDTable[filedes].Path, "\0");
             OS_FDTable[filedes].User =       0;
@@ -449,7 +441,6 @@ int32 OS_close (int32  filedes)
         else
         {
             /* fill in the table before returning */
-            OS_InterruptSafeLock(&OS_FDTableMutex, &mask, &previous);
             OS_FDTable[filedes].OSfd =       -1;
             strcpy(OS_FDTable[filedes].Path, "\0");
             OS_FDTable[filedes].User =       0;
@@ -837,12 +828,12 @@ int32 OS_cp (const char *src, const char *dest)
     ** Check to see if the paths are too long
     */
     if (strlen(src) >= OS_MAX_PATH_LEN)
-    {
+    {        
         return OS_FS_ERR_PATH_TOO_LONG;
     }
     
     if (strlen(dest) >= OS_MAX_PATH_LEN)
-    {
+    {   
         return OS_FS_ERR_PATH_TOO_LONG;
     }
 
@@ -889,17 +880,47 @@ int32 OS_cp (const char *src, const char *dest)
         return OS_FS_ERR_PATH_INVALID;
     }
 
-    sprintf(command,"cp %s %s",src_path, dest_path);
-     
-     status = system(command);
-     if (status == 0)
-     {
-         return OS_FS_SUCCESS;
-     }
-     else
-     {
-         return OS_FS_ERROR;
-     }
+    /* BUFSIZE defaults to 8192 
+    ** BUFSIZE of 1 means one chareter at time
+    ** good values should fit to blocksize, like 1024 or 4096
+    ** higher values reduce number of system calls
+    */
+    char buf[BUFSIZ];
+    size_t size = 0;
+    
+    int sourceHandle = open(src_path, O_RDONLY, 0);
+    if(sourceHandle == ERROR)
+    {
+        return OS_FS_ERROR;
+    }
+    int destHandle = open(dest_path, O_WRONLY | O_CREAT /*| O_TRUNC/**/, 0644);
+    if(destHandle == ERROR)
+    {
+        close(sourceHandle);
+        return OS_FS_ERROR;
+    }    
+
+    while ((size = read(sourceHandle, buf, BUFSIZ)) > 0) 
+    {
+    	status = write(destHandle, buf, size);
+
+        if (status == ERROR)
+	{
+	    close(sourceHandle);
+	    close(destHandle);
+            return OS_FS_ERROR;
+	}
+    }
+    
+    close(sourceHandle);
+    close(destHandle);
+
+    if(size == ERROR)
+    {
+        return OS_FS_ERROR;
+    }
+
+    return OS_FS_SUCCESS;
      
 }/*end OS_cp */
 
@@ -1115,13 +1136,13 @@ int32 OS_closedir (os_dirp_t directory)
     status = closedir(directory);
     if (status != ERROR)
     {
+	directory = NULL;
         return OS_FS_SUCCESS;
     }
     else
     {
         return OS_FS_ERROR;
     }
-
 } /* end OS_closedir */
 
 /*--------------------------------------------------------------------------------------

@@ -1336,7 +1336,8 @@ void UT_os_statfile_test()
     int32 idx=0;
     UT_OsApiInfo_t apiInfo;
     const char* testDesc=NULL;
-    os_fstat_t fstats1, fstats2;
+    os_fstat_t fstats1 = {};
+    os_fstat_t fstats2 = {};
 
     UT_OS_CLEAR_API_INFO_MACRO(apiInfo, idx)
 
@@ -1881,6 +1882,7 @@ void UT_os_copyfile_test()
         goto UT_os_copyfile_test_exit_tag;
     }
 
+    printf("********************************************\n");
     if (OS_cp(g_fNames[0], g_fNames[1]) != OS_FS_SUCCESS)
     {
         UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_FAILED)

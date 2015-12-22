@@ -472,7 +472,7 @@ void UT_os_closedir_test()
         UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_FAILED)
         goto UT_os_closedir_test_exit_tag;
     }
-
+    
     if (OS_readdir(dirHdl) == NULL)
         UT_OS_SET_TEST_RESULT_MACRO(apiInfo, idx, testDesc, UT_OS_PASSED)
     else
