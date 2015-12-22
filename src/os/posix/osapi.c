@@ -537,8 +537,6 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
     */
     OS_task_table[possible_taskid].free = FALSE;
     
-    OS_InterruptSafeUnlock(&OS_task_table_mut, &previous);
-
     if ( stack_size < PTHREAD_STACK_MIN )
     {
        local_stack_size = PTHREAD_STACK_MIN;
@@ -555,7 +553,6 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
     memset(&custom_attr, 0, sizeof(custom_attr));
     if(pthread_attr_init(&custom_attr))
     {  
-        OS_InterruptSafeLock(&OS_task_table_mut, &mask, &previous); 
         OS_task_table[possible_taskid].free = TRUE;
         OS_InterruptSafeUnlock(&OS_task_table_mut, &previous);
         
@@ -584,6 +581,7 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
                printf("pthread_attr_setinheritsched error in OS_TaskCreate, Task ID = %d, errno = %s\n",
                       possible_taskid,strerror(errno));
            #endif
+	   OS_InterruptSafeUnlock(&OS_task_table_mut, &previous);
            return(OS_ERROR);
        }
 
@@ -595,6 +593,7 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
           #ifdef OS_DEBUG_PRINTF
              printf("pthread_attr_setstacksize error in OS_TaskCreate, Task ID = %d\n",possible_taskid);
           #endif
+          OS_InterruptSafeUnlock(&OS_task_table_mut, &previous);
           return(OS_ERROR);
        }
 
@@ -607,6 +606,7 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
           #ifdef OS_DEBUG_PRINTF
              printf("pthread_attr_setschedpolity error in OS_TaskCreate, Task ID = %d\n",possible_taskid);
           #endif
+          OS_InterruptSafeUnlock(&OS_task_table_mut, &previous);
           return(OS_ERROR);
        }
 
@@ -621,6 +621,7 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
           #ifdef OS_DEBUG_PRINTF
              printf("pthread_attr_setschedparam error in OS_TaskCreate, Task ID = %d\n",possible_taskid);
           #endif
+          OS_InterruptSafeUnlock(&OS_task_table_mut, &previous);
           return(OS_ERROR);
        }
 
@@ -635,7 +636,6 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
                                  (void *)0);
     if (return_code != 0)
     {
-        OS_InterruptSafeLock(&OS_task_table_mut, &mask, &previous); 
         OS_task_table[possible_taskid].free = TRUE;
         OS_InterruptSafeUnlock(&OS_task_table_mut, &previous); 
         #ifdef OS_DEBUG_PRINTF
@@ -650,7 +650,6 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
     return_code = pthread_detach(OS_task_table[possible_taskid].id);
     if (return_code !=0)
     {
-       OS_InterruptSafeLock(&OS_task_table_mut, &mask, &previous); 
        OS_task_table[possible_taskid].free = TRUE;
        OS_InterruptSafeUnlock(&OS_task_table_mut, &previous); 
        #ifdef OS_DEBUG_PRINTF
@@ -662,7 +661,6 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
     return_code = pthread_attr_destroy(&custom_attr);
     if (return_code !=0)
     {
-       OS_InterruptSafeLock(&OS_task_table_mut, &mask, &previous); 
        OS_task_table[possible_taskid].free = TRUE;
        OS_InterruptSafeUnlock(&OS_task_table_mut, &previous); 
        #ifdef OS_DEBUG_PRINTF
@@ -679,8 +677,6 @@ int32 OS_TaskCreate (uint32 *task_id, const char *task_name, osal_task_entry fun
     /* 
     ** Initialize the table entries 
     */
-    OS_InterruptSafeLock(&OS_task_table_mut, &mask, &previous); 
-
     OS_task_table[possible_taskid].free = FALSE;
     strcpy(OS_task_table[*task_id].name, (char*) task_name);
     OS_task_table[possible_taskid].creator = OS_FindCreator();
